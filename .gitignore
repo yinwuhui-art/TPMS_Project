@@ -1,0 +1,15 @@
+# CCS build files
+Debug/
+Release/
+.settings/
+.metadata/
+*.o
+*.d
+*.obj
+*.out
+*.map
+*.bin
+*.hex
+
+# system files
+.DS_Store
