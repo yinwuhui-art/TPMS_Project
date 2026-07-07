@@ -1,15 +1,36 @@
-# CCS build files
-Debug/
+# CCS build output
 Release/
-.settings/
-.metadata/
+Debug/
+Binaries/
+
+# Object and dependency files
 *.o
 *.d
 *.obj
-*.out
-*.map
-*.bin
-*.hex
+*.a
+*.lib
 
-# system files
+# Output files
+*.out
+*.hex
+*.bin
+*.elf
+*.map
+*.lst
+
+# Logs
+*.log
+
+# CCS temporary/cache files
+.metadata/
+.tmp/
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Temporary files
+*.bak
+*.tmp
+*.swp
+.settings/

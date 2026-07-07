@@ -71,7 +71,9 @@ Target Device: cc23xx
 #include "ti/ble/app_util/framework/bleapputil_api.h"
 #include "ti/ble/app_util/menu/menu_module.h"
 #include <app_main.h>
-
+#include <stddef.h>
+#include "tpms/tpms_app.h"
+#include "tpms/ble/tpms_ble_scan.h"
 //*****************************************************************************
 //! Local Functions
 //*****************************************************************************
@@ -170,9 +172,30 @@ void Observer_ScanEventHandler(uint32 event, BLEAppUtil_msgHdr_t *pMsgData)
     switch (event)
     {
         /*! This event happens after detecting peer, an event for each peer */
+
         case BLEAPPUTIL_ADV_REPORT:
         {
             MenuModule_printf(APP_MENU_SCAN_EVENT, 0, "Scan status: Adv report");
+
+            if ((scanMsg != NULL) &&
+                (scanMsg->pBuf != NULL) &&
+                (scanMsg->pBuf->pAdvReport.pData != NULL) &&
+                (scanMsg->pBuf->pAdvReport.dataLen > 0U))
+            {
+                /*
+                 * 把 TI BLE 扫描到的广播包交给 TPMS 模块。
+                 *
+                 * timestamp_ms 当前先传 0。
+                 * 后面接入系统 tick 后，再换成真实毫秒时间。
+                 */
+                (void)TpmsBleScan_handleAdvReport(
+                    scanMsg->pBuf->pAdvReport.addr,
+                    scanMsg->pBuf->pAdvReport.addrType,
+                    scanMsg->pBuf->pAdvReport.pData,
+                    scanMsg->pBuf->pAdvReport.dataLen,
+                    scanMsg->pBuf->pAdvReport.rssi,
+                    0UL);
+            }
 
             break;
         }
@@ -188,19 +211,38 @@ void Observer_ScanEventHandler(uint32 event, BLEAppUtil_msgHdr_t *pMsgData)
         {
             uint8 i;
 
-            for(int i = 0; i < APP_MAX_NUM_OF_ADV_REPORTS; i++)
+            observerScanIndex = 0U;
+
+            for (i = 0U; i < APP_MAX_NUM_OF_ADV_REPORTS; i++)
             {
                 memset(&observerScanRes[i], 0, sizeof(App_scanResults));
             }
 
             // Go over the advertise reports that was saved in the host level and save it
-            for (i = 0; i < scanMsg->pBuf->pScanDis.numReport; i++)
+            for (i = 0U; i < scanMsg->pBuf->pScanDis.numReport; i++)
             {
-              GapScan_Evt_AdvRpt_t advReport;
-              // Get the address from the report
-              GapScan_getAdvReport(i, &advReport);
-              // Add the report to the scan list
-              Observer_addScanRes(&advReport);
+                GapScan_Evt_AdvRpt_t advReport;
+
+                // Get the address from the report
+                GapScan_getAdvReport(i, &advReport);
+
+                // Add the report to the scan list
+                Observer_addScanRes(&advReport);
+
+                /*
+                 * 如果扫描结果是在 Scan disabled 后统一返回，
+                 * 这里也把广播数据交给 TPMS 模块。
+                 */
+                if ((advReport.pData != NULL) && (advReport.dataLen > 0U))
+                {
+                    (void)TpmsBleScan_handleAdvReport(
+                        advReport.addr,
+                        advReport.addrType,
+                        advReport.pData,
+                        advReport.dataLen,
+                        advReport.rssi,
+                        0UL);
+                }
             }
 
             MenuModule_printf(APP_MENU_SCAN_EVENT, 0, "Scan status: Scan disabled - "
@@ -266,6 +308,13 @@ uint8 Scan_getScanResList(App_scanResults **scanRes)
 bStatus_t Observer_start()
 {
     bStatus_t status = SUCCESS;
+
+    /*
+     * 初始化 TPMS 应用层。
+     * 放在 scanStart 之前，保证收到广播前 TPMS 模块已经准备好。
+     */
+    TPMS_init();
+    TPMS_start();
 
     // Register the handlers
     status = BLEAppUtil_registerEventHandler(&observerScanHandler);

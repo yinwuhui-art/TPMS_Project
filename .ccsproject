@@ -16,4 +16,5 @@
 	<templateProperties value="id=basic_ble_LP_EM_CC2745R10_Q1_freertos_ticlang.projectspec.basic_ble_LP_EM_CC2745R10_Q1_freertos_ticlang,buildProfile=release,isHybrid=true"/>
 	<origin value="C:\ti\simplelink_lowpower_f3_sdk_9_20_00_81\examples\rtos\LP_EM_CC2745R10_Q1\ble\basic_ble\freertos\ticlang\basic_ble_LP_EM_CC2745R10_Q1_freertos_ticlang.projectspec"/>
 	<filesToOpen value=""/>
+	<isTargetManual value="false"/>
 </projectOptions>
