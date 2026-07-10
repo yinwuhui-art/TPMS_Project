@@ -1,26 +1,14 @@
-/*
- * tpms_ble_scan.c
- *
- *  Created on: 2026年7月2日
- *      Author: yinwuhui
- */
-
-
 #include "tpms_ble_scan.h"
 
 #include <stddef.h>
 #include <string.h>
 
+#include "ti/ble/app_util/menu/menu_module.h"
+
 #include "../tpms_app.h"
 
 void TpmsBleScan_init(void)
 {
-    /*
-     * 当前不直接启动 BLE Scan。
-     *
-     * BLE Scan 的启动仍然放在 app_observer.c / TI BLE_basic 原流程中。
-     * 本模块只负责把扫描到的广播数据转换成 TPMS 内部格式。
-     */
 }
 
 bool TpmsBleScan_handleAdvReport(const uint8_t *addr,
@@ -31,6 +19,7 @@ bool TpmsBleScan_handleAdvReport(const uint8_t *addr,
                                  uint32_t timestamp_ms)
 {
     TpmsBleAdvReport_t report;
+    uint16_t i;
 
     if ((addr == NULL) || (adv_data == NULL))
     {
@@ -40,6 +29,22 @@ bool TpmsBleScan_handleAdvReport(const uint8_t *addr,
     if (adv_len == 0U)
     {
         return false;
+    }
+
+    MenuModule_printf(0, 0,
+                      "TPMS ADV addr=%02X:%02X:%02X:%02X:%02X:%02X type=%d len=%d rssi=%d",
+                      addr[5], addr[4], addr[3],
+                      addr[2], addr[1], addr[0],
+                      addr_type,
+                      adv_len,
+                      rssi);
+
+    for (i = 0U; i < adv_len; i++)
+    {
+        MenuModule_printf(0, 0,
+                          "ADV[%d]=0x%02X",
+                          i,
+                          adv_data[i]);
     }
 
     memset(&report, 0, sizeof(TpmsBleAdvReport_t));
@@ -56,4 +61,3 @@ bool TpmsBleScan_handleAdvReport(const uint8_t *addr,
 
     return true;
 }
-
