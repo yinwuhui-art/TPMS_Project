@@ -1,223 +1,141 @@
 /*
  * tpms_protocol.c
  *
- *  Created on: 2026年7月2日
- *      Author: yinwuhui
+ * BLEM -> Phone APP FFB2 protocol
  */
-
-
 
 #include "tpms_protocol.h"
 
-#include <stddef.h>
 #include <string.h>
 
-static uint8_t TpmsProtocol_checksum(const uint8_t *data, uint16_t len)
+
+uint8_t TpmsProtocol_makeInfo(uint8_t vendor,
+                              uint8_t mode,
+                              uint8_t battery_low,
+                              uint8_t lf_triggered)
 {
-    uint16_t i;
-    uint8_t sum = 0U;
-
-    if (data == NULL)
-    {
-        return 0U;
-    }
-
-    for (i = 0U; i < len; i++)
-    {
-        sum = (uint8_t)(sum + data[i]);
-    }
-
-    return sum;
-}
-
-static void TpmsProtocol_putU16Le(uint8_t *buf, uint16_t value)
-{
-    buf[0] = (uint8_t)(value & 0xFFU);
-    buf[1] = (uint8_t)((value >> 8U) & 0xFFU);
-}
-
-static void TpmsProtocol_putS16Le(uint8_t *buf, int16_t value)
-{
-    TpmsProtocol_putU16Le(buf, (uint16_t)value);
-}
-
-static void TpmsProtocol_putU32Le(uint8_t *buf, uint32_t value)
-{
-    buf[0] = (uint8_t)(value & 0xFFU);
-    buf[1] = (uint8_t)((value >> 8U) & 0xFFU);
-    buf[2] = (uint8_t)((value >> 16U) & 0xFFU);
-    buf[3] = (uint8_t)((value >> 24U) & 0xFFU);
-}
-
-bool TpmsProtocol_decode(const uint8_t *data,
-                         uint16_t len,
-                         TpmsProtocolFrame_t *out_frame)
-{
-    uint8_t payload_len;
-    uint16_t total_len;
-    uint8_t checksum_calc;
-    uint8_t checksum_recv;
-
-    if ((data == NULL) || (out_frame == NULL))
-    {
-        return false;
-    }
-
-    if (len < 5U)
-    {
-        return false;
-    }
-
-    if ((data[0] != TPMS_PROTOCOL_HEAD0) ||
-        (data[1] != TPMS_PROTOCOL_HEAD1))
-    {
-        return false;
-    }
-
-    payload_len = data[3];
-
-    if (payload_len > TPMS_PROTOCOL_PAYLOAD_MAX_LEN)
-    {
-        return false;
-    }
-
-    total_len = (uint16_t)(5U + payload_len);
-
-    if (len < total_len)
-    {
-        return false;
-    }
-
-    checksum_recv = data[4U + payload_len];
-    checksum_calc = TpmsProtocol_checksum(&data[2], (uint16_t)(2U + payload_len));
-
-    if (checksum_calc != checksum_recv)
-    {
-        return false;
-    }
-
-    memset(out_frame, 0, sizeof(TpmsProtocolFrame_t));
-
-    out_frame->cmd = data[2];
-    out_frame->payload_len = payload_len;
-
-    if (payload_len > 0U)
-    {
-        memcpy(out_frame->payload, &data[4], payload_len);
-    }
-
-    return true;
-}
-
-bool TpmsProtocol_encode(uint8_t cmd,
-                         const uint8_t *payload,
-                         uint16_t payload_len,
-                         uint8_t *out_data,
-                         uint16_t out_max_len,
-                         uint16_t *out_len)
-{
-    uint16_t total_len;
-
-    if ((out_data == NULL) || (out_len == NULL))
-    {
-        return false;
-    }
-
-    if (payload_len > TPMS_PROTOCOL_PAYLOAD_MAX_LEN)
-    {
-        return false;
-    }
-
-    if ((payload_len > 0U) && (payload == NULL))
-    {
-        return false;
-    }
-
-    total_len = (uint16_t)(5U + payload_len);
-
-    if (out_max_len < total_len)
-    {
-        return false;
-    }
-
-    out_data[0] = TPMS_PROTOCOL_HEAD0;
-    out_data[1] = TPMS_PROTOCOL_HEAD1;
-    out_data[2] = cmd;
-    out_data[3] = (uint8_t)payload_len;
-
-    if (payload_len > 0U)
-    {
-        memcpy(&out_data[4], payload, payload_len);
-    }
-
-    out_data[4U + payload_len] =
-        TpmsProtocol_checksum(&out_data[2], (uint16_t)(2U + payload_len));
-
-    *out_len = total_len;
-
-    return true;
-}
-
-bool TpmsProtocol_packOneWheelData(TpmsWheelPos_t wheel_pos,
-                                   const TpmsWheelData_t *wheel_data,
-                                   uint8_t *out_payload,
-                                   uint16_t out_max_len,
-                                   uint16_t *out_payload_len)
-{
-    uint16_t index = 0U;
+    uint8_t info = 0U;
 
     /*
-     * 单轮 payload 格式：
+     * Byte8:
      *
-     * Byte0      wheel_pos
-     * Byte1      valid
-     * Byte2~5    sensor_id, little endian
-     * Byte6~7    pressure_kpa, int16, little endian
-     * Byte8~9    temperature_c, int16, little endian
-     * Byte10~11  battery_mv, uint16, little endian
-     * Byte12~13  status, uint16, little endian
-     * Byte14     rssi
-     * Byte15~18  last_rx_ms, uint32, little endian
-     *
-     * 总长度：19 bytes
+     * bit7~bit5：厂家
+     * bit4~bit2：模式
+     * bit1     ：电池状态
+     * bit0     ：低频触发状态
      */
+    info |= (uint8_t)((vendor & 0x07U) << 5);
+    info |= (uint8_t)((mode & 0x07U) << 2);
+    info |= (uint8_t)((battery_low & 0x01U) << 1);
+    info |= (uint8_t)(lf_triggered & 0x01U);
 
-    if ((wheel_data == NULL) ||
-        (out_payload == NULL) ||
-        (out_payload_len == NULL))
+    return info;
+}
+
+
+uint8_t TpmsProtocol_pressureKpaToRaw(uint16_t pressure_kpa)
+{
+    uint32_t raw;
+
+    /*
+     * 协议：
+     * 胎压 kPa = Pressure * 1.373
+     *
+     * Pressure = 胎压 kPa / 1.373
+     *          = 胎压 kPa * 1000 / 1373
+     *
+     * +686 用于四舍五入。
+     */
+    raw = (((uint32_t)pressure_kpa * 1000UL) + 686UL) / 1373UL;
+
+    if (raw > 255UL)
+    {
+        raw = 255UL;
+    }
+
+    return (uint8_t)raw;
+}
+
+
+uint8_t TpmsProtocol_temperatureCToRaw(int16_t temperature_c)
+{
+    int16_t raw;
+
+    /*
+     * 协议：
+     * 胎温 ℃ = Temperature - 50
+     *
+     * Temperature = 胎温 ℃ + 50
+     */
+    raw = (int16_t)(temperature_c + 50);
+
+    if (raw < 0)
+    {
+        raw = 0;
+    }
+
+    if (raw > 255)
+    {
+        raw = 255;
+    }
+
+    return (uint8_t)raw;
+}
+
+
+bool TpmsProtocol_buildFfb2Report(const TpmsAppFfb2Report_t *report,
+                                  uint8_t *out_buf,
+                                  uint16_t out_buf_len)
+{
+    if ((report == NULL) || (out_buf == NULL))
     {
         return false;
     }
 
-    if (out_max_len < 19U)
+    if (out_buf_len < TPMS_APP_FFB2_REPORT_LEN)
     {
         return false;
     }
 
-    out_payload[index++] = (uint8_t)wheel_pos;
-    out_payload[index++] = (wheel_data->valid == true) ? 1U : 0U;
+    /*
+     * Byte0 ~ Byte1：固定值 0x00 0x01
+     */
+    out_buf[TPMS_APP_FFB2_IDX_FIXED_0] = TPMS_APP_FFB2_FIXED_BYTE0;
+    out_buf[TPMS_APP_FFB2_IDX_FIXED_1] = TPMS_APP_FFB2_FIXED_BYTE1;
 
-    TpmsProtocol_putU32Le(&out_payload[index], wheel_data->sensor_id);
-    index += 4U;
+    /*
+     * Byte2 ~ Byte5：传感器 ID
+     */
+    out_buf[TPMS_APP_FFB2_IDX_SENSOR_ID_0] = report->sensor_id[0];
+    out_buf[TPMS_APP_FFB2_IDX_SENSOR_ID_1] = report->sensor_id[1];
+    out_buf[TPMS_APP_FFB2_IDX_SENSOR_ID_2] = report->sensor_id[2];
+    out_buf[TPMS_APP_FFB2_IDX_SENSOR_ID_3] = report->sensor_id[3];
 
-    TpmsProtocol_putS16Le(&out_payload[index], wheel_data->pressure_kpa);
-    index += 2U;
+    /*
+     * Byte6：Pressure
+     */
+    out_buf[TPMS_APP_FFB2_IDX_PRESSURE] = report->pressure_raw;
 
-    TpmsProtocol_putS16Le(&out_payload[index], wheel_data->temperature_c);
-    index += 2U;
+    /*
+     * Byte7：Temperature
+     */
+    out_buf[TPMS_APP_FFB2_IDX_TEMPERATURE] = report->temperature_raw;
 
-    TpmsProtocol_putU16Le(&out_payload[index], wheel_data->battery_mv);
-    index += 2U;
+    /*
+     * Byte8：Info
+     */
+    out_buf[TPMS_APP_FFB2_IDX_INFO] = report->info;
 
-    TpmsProtocol_putU16Le(&out_payload[index], wheel_data->status);
-    index += 2U;
+    /*
+     * Byte9 ~ Byte10：FunctionReuse
+     */
+    out_buf[TPMS_APP_FFB2_IDX_FUNC_REUSE_0] = report->function_reuse[0];
+    out_buf[TPMS_APP_FFB2_IDX_FUNC_REUSE_1] = report->function_reuse[1];
 
-    out_payload[index++] = (uint8_t)wheel_data->rssi;
-
-    TpmsProtocol_putU32Le(&out_payload[index], wheel_data->last_rx_ms);
-    index += 4U;
-
-    *out_payload_len = index;
+    /*
+     * Byte11：position
+     */
+    out_buf[TPMS_APP_FFB2_IDX_POSITION] = report->position;
 
     return true;
 }

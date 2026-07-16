@@ -1,7 +1,5 @@
 /*
  * tpms_ble_service.c
- *
- * TPMS BLE 上报接口。
  */
 
 #include "tpms_ble_service.h"
@@ -9,17 +7,19 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include <ti/ble/profiles/simple_gatt/simple_gatt_profile.h>
 #include "ti/ble/stack_util/icall/app/icall_ble_api.h"
 
+
 void TpmsBleService_init(void)
 {
     /*
-     * GATT Service 已经由 SimpleGattProfile_addService() 注册。
-     * 这里暂时不需要额外处理。
+     * 当前暂时没有单独初始化内容。
      */
 }
+
 
 bool TpmsBleService_notifyFfb2(const uint8_t *data, uint16_t len)
 {
@@ -34,16 +34,10 @@ bool TpmsBleService_notifyFfb2(const uint8_t *data, uint16_t len)
     }
 
     /*
-     * SIMPLEGATTPROFILE_CHAR2 对应 FFB2。
+     * SIMPLEGATTPROFILE_CHAR2 对应 FFB2：
      *
-     * FFB2 UUID:
-     * 0000FFB2-0000-1000-8000-00805F9B34FB
-     *
-     * 属性:
-     * Read / Notify
-     *
-     * SimpleGattProfile_setParameter() 会更新 Char2 数据，
-     * 并通过 simple_gatt_profile.c 里的 Char2 CCCD 触发 Notify。
+     * UUID: 0000FFB2-0000-1000-8000-00805F9B34FB
+     * 属性: Notify + Read
      */
     if (SimpleGattProfile_setParameter(SIMPLEGATTPROFILE_CHAR2,
                                        (uint8)len,
@@ -55,36 +49,112 @@ bool TpmsBleService_notifyFfb2(const uint8_t *data, uint16_t len)
     return false;
 }
 
-/*
- * 兼容旧框架接口：
- *
- * tpms_app.c 里原来调用了：
- * TpmsBleService_notifyWheelData()
- *
- * 所以这里必须保留这个函数，否则链接阶段会报：
- * unresolved symbol TpmsBleService_notifyWheelData
- *
- * 当前先不读取 TpmsWheelData_t 里的具体字段。
- * 后续等确认 tpms_types.h 里的真实字段名后，再正式打包胎压、胎温、
- * 传感器 ID、状态、故障等数据。
- */
+
+bool TpmsBleService_notifyFfb2AppReport(const TpmsAppFfb2Report_t *report)
+{
+    uint8_t payload[TPMS_APP_FFB2_REPORT_LEN];
+
+    if (TpmsProtocol_buildFfb2Report(report,
+                                     payload,
+                                     sizeof(payload)) != true)
+    {
+        return false;
+    }
+
+    return TpmsBleService_notifyFfb2(payload, TPMS_APP_FFB2_REPORT_LEN);
+}
+
+
+bool TpmsBleService_notifyFfb2SensorRaw(const uint8_t sensor_id[4],
+                                        uint8_t pressure_raw,
+                                        uint8_t temperature_raw,
+                                        uint8_t info,
+                                        uint8_t function_reuse_0,
+                                        uint8_t function_reuse_1,
+                                        uint8_t position)
+{
+    TpmsAppFfb2Report_t report;
+
+    if (sensor_id == NULL)
+    {
+        return false;
+    }
+
+    memset(&report, 0, sizeof(report));
+
+    report.sensor_id[0] = sensor_id[0];
+    report.sensor_id[1] = sensor_id[1];
+    report.sensor_id[2] = sensor_id[2];
+    report.sensor_id[3] = sensor_id[3];
+
+    report.pressure_raw = pressure_raw;
+    report.temperature_raw = temperature_raw;
+    report.info = info;
+
+    report.function_reuse[0] = function_reuse_0;
+    report.function_reuse[1] = function_reuse_1;
+
+    report.position = position;
+
+    return TpmsBleService_notifyFfb2AppReport(&report);
+}
+
+
 bool TpmsBleService_notifyWheelData(const TpmsWheelData_t *wheel_data)
 {
     /*
-     * 临时测试上报数据：
+     * 兼容旧接口：
      *
-     * 0xA1：表示 TPMS 轮胎数据上报测试帧
-     * 0x00：占位状态
+     * 之前这里可能发过 A1 00 之类的临时调试帧。
+     * 现在禁止继续发临时格式，统一改成正式 12 字节格式。
      *
-     * App 开启 FFB2 Notify 后，如果 MCU 调用到这个函数，
-     * 手机 App 应该能从 FFB2 收到：A1 00
+     * 由于当前 TpmsWheelData_t 的具体字段你之前没有完全固定，
+     * 这里先不强行访问 wheel_data->xxx，避免再次出现：
+     *
+     * no member named 'wheel_pos'
+     * no member named 'fault_flags'
+     *
+     * 后续等 TpmsWheelData_t 字段确定后，再把真实字段映射进来。
      */
-    uint8_t payload[2] = {0xA1U, 0x00U};
+    uint8_t sensor_id[4] = {0x00U, 0x00U, 0x00U, 0x00U};
+    uint8_t info;
 
     if (wheel_data == NULL)
     {
         return false;
     }
 
-    return TpmsBleService_notifyFfb2(payload, sizeof(payload));
+    /*
+     * 默认 Info：
+     *
+     * 厂家：森萨塔 001
+     * 模式：运行模式 001
+     * 电池：正常 0
+     * 低频：非低频触发 0
+     *
+     * Byte8 = 001 001 0 0 = 0x24
+     */
+    info = TpmsProtocol_makeInfo(TPMS_APP_VENDOR_SENSATA,
+                                 TPMS_APP_MODE_RUNNING,
+                                 TPMS_APP_BATTERY_NORMAL,
+                                 TPMS_APP_LF_NOT_TRIGGERED);
+
+    /*
+     * 先发一帧正式格式占位数据：
+     *
+     * Byte0~1  = 00 01
+     * Byte2~5  = 00 00 00 00
+     * Byte6    = 00
+     * Byte7    = 50，对应 0℃
+     * Byte8    = info
+     * Byte9~10 = FF FF
+     * Byte11   = 00，未知轮位
+     */
+    return TpmsBleService_notifyFfb2SensorRaw(sensor_id,
+                                             0x00U,
+                                             50U,
+                                             info,
+                                             TPMS_APP_FUNC_REUSE_DEFAULT_0,
+                                             TPMS_APP_FUNC_REUSE_DEFAULT_1,
+                                             TPMS_APP_POS_NONE);
 }
