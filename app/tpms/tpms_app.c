@@ -211,24 +211,41 @@ void TPMS_onPhoneRxData(const uint8_t *data, uint16_t len)
         case TPMS_PHONE_CMD_RESULT_START_LEARN:
         {
             /*
-             * App 写 FFB1 = 02。
+             * App 发送 FFB1 = 02，开始新一轮手动学习。
              *
-             * 文档里的 Start_Learn_TPMS。
+             * 如果当前不在学习模式：
              *
-             * 注意：
-             * 这里不要直接发 FFB2 学习成功帧。
+             * 1. 先把上一轮已经学习过的记录通知 App 清掉
+             *    即发送旧 Sensor ID + position = 0x00
              *
-             * 正确流程：
+             * 2. 再清空 BLEM 内部学习状态
              *
-             * 1. 这里调用 TpmsLearning_startManual()
-             * 2. BLEM 进入手动学习模式
-             * 3. 学习人员按 LF -> RF -> RR -> LR 顺序低频触发
-             * 4. tpms_ble_scan.c 扫到对应白名单地址
-             * 5. tpms_ble_scan.c 调用 TpmsLearning_onTpmsAdv()
-             * 6. tpms_learning.c 判断 FunctionReuse bit1 = 1
-             * 7. 学习成功后，由 tpms_learning.c 通过 FFB2 Notify 通知 App
+             * 3. 再进入新的学习模式
+             *
+             * 如果当前已经在学习模式，则忽略重复 02，
+             * 防止中途把学习结果清零。
              */
-            TpmsLearning_startManual();
+            if (TpmsLearning_isActive() == false)
+            {
+                /*
+                 * 必须放在 TpmsLearning_startManual() 之前。
+                 *
+                 * 因为 TpmsLearning_startManual() 会清空旧学习记录。
+                 */
+                TpmsLearning_notifyClearLearnedRecords();
+
+                /*
+                 * 开始新一轮学习。
+                 *
+                 * 内部会：
+                 * mode_active = 1
+                 * step_index = 0
+                 * learned_count = 0
+                 * done_flags = 0
+                 * wheel_learn_flag = [0,0,0,0]
+                 */
+                TpmsLearning_startManual();
+            }
 
             break;
         }
@@ -256,15 +273,19 @@ void TPMS_onPhoneRxData(const uint8_t *data, uint16_t len)
 
             break;
         }
-
+//7.23
         case TPMS_PHONE_CMD_RESULT_CLEAR_LEARN:
         {
             /*
-             * 清除学习结果。
+             * App 要求清除学习记录。
              *
-             * 当前第一版只清 RAM 里的学习状态。
-             * 后续如果保存到 Flash，这里还要调用 Flash 擦除接口。
+             * 先通知 App 清除旧记录：
+             * 旧 Sensor ID + position = 0x00
+             *
+             * 然后 BLEM 内部清空学习状态。
              */
+            TpmsLearning_notifyClearLearnedRecords();
+
             TpmsLearning_init();
 
             break;

@@ -89,6 +89,36 @@ extern volatile int8_t   g_tpms_learning_white_rssi[TPMS_LEARNING_WHEEL_COUNT];
 extern volatile uint8_t  g_tpms_learning_white_addr_type[TPMS_LEARNING_WHEEL_COUNT];
 extern volatile uint8_t  g_tpms_learning_white_function_reuse[TPMS_LEARNING_WHEEL_COUNT][2];
 
+//7.23add
+/*
+ * 四个轮胎学习标志位
+ *
+ * index 0 = LF 左前
+ * index 1 = RF 右前
+ * index 2 = RR 右后
+ * index 3 = LR 左后
+ *
+ * 0 = 未学习
+ * 1 = 已学习
+ */
+extern volatile uint8_t g_tpms_learning_wheel_learn_flag[TPMS_LEARNING_WHEEL_COUNT];
+
+/*
+ * 每个学习轮位对应的物理传感器白名单 index。
+ *
+ * 0 = LF 传感器
+ * 1 = RF 传感器
+ * 2 = RR 传感器
+ * 3 = LR 传感器
+ * 0xFF = 未学习
+ */
+extern volatile uint8_t g_tpms_learning_white_source_index[TPMS_LEARNING_WHEEL_COUNT];
+
+/*
+ * 最近一次学习到的物理传感器白名单 index。
+ */
+extern volatile uint8_t g_tpms_learning_last_whitelist_index;
+
 
 /*
  * ============================================================
@@ -116,6 +146,16 @@ void TpmsLearning_startManual(void);
 void TpmsLearning_stopManual(void);
 
 bool TpmsLearning_isActive(void);
+
+/*
+ * 重新手动学习前，通知 App 清除上一轮已经学习的记录。
+ *
+ * 对上一轮已经学习过的每个轮位发送一包 FFB2：
+ *
+ * Byte2~Byte5 = 旧 Sensor ID
+ * Byte11 position = 0x00
+ */
+void TpmsLearning_notifyClearLearnedRecords(void);
 
 /*
  * 扫描模块识别到目标 TPMS 后调用。

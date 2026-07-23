@@ -37,6 +37,24 @@ volatile int8_t   g_tpms_learning_white_rssi[TPMS_LEARNING_WHEEL_COUNT] = {0};
 volatile uint8_t  g_tpms_learning_white_addr_type[TPMS_LEARNING_WHEEL_COUNT] = {0};
 volatile uint8_t  g_tpms_learning_white_function_reuse[TPMS_LEARNING_WHEEL_COUNT][2] = {{0}};
 
+volatile uint8_t g_tpms_learning_wheel_learn_flag[TPMS_LEARNING_WHEEL_COUNT] =
+{
+    0U,
+    0U,
+    0U,
+    0U
+};
+
+volatile uint8_t g_tpms_learning_white_source_index[TPMS_LEARNING_WHEEL_COUNT] =
+{
+    0xFFU,
+    0xFFU,
+    0xFFU,
+    0xFFU
+};
+
+volatile uint8_t g_tpms_learning_last_whitelist_index = 0xFFU;
+
 volatile uint8_t  g_tpms_learning_last_addr[6] = {0};
 volatile uint8_t  g_tpms_learning_last_id[4] = {0};
 volatile int8_t   g_tpms_learning_last_rssi = 0;
@@ -188,12 +206,97 @@ static bool TpmsLearning_isFunctionReuseBit1Set(const uint8_t *mfr_data,
     return false;
 }
 
-
-static void TpmsLearning_setDoneFlag(uint8_t position)
+//7.23add
+static void TpmsLearning_setDoneFlag(uint8_t wheel_index, uint8_t position)
 {
+    if (wheel_index >= TPMS_LEARNING_WHEEL_COUNT)
+    {
+        return;
+    }
+
+    /*
+     * position 是 Byte11 的轮位 bit：
+     *
+     * LF = 0x01
+     * RF = 0x02
+     * LR = 0x04
+     * RR = 0x08
+     *
+     * 旧的学习标志保持 1，新的也置 1。
+     */
     g_tpms_learning_done_flags |= position;
+
+    /*
+     * 独立的四轮学习标志：
+     *
+     * [1,0,0,0] = LF 完成
+     * [1,1,0,0] = LF、RF 完成
+     * [1,1,1,0] = LF、RF、RR 完成
+     * [1,1,1,1] = 四轮完成
+     */
+    g_tpms_learning_wheel_learn_flag[wheel_index] = 1U;
 }
 
+//7.23清除旧学习记录通知函数
+static void TpmsLearning_sendClearLearnRecordReport(uint8_t wheel_index)
+{
+    uint8_t info;
+
+    if (wheel_index >= TPMS_LEARNING_WHEEL_COUNT)
+    {
+        return;
+    }
+
+    if (g_tpms_learning_white_valid[wheel_index] == 0U)
+    {
+        return;
+    }
+
+    /*
+     * 清除旧学习记录。
+     *
+     * 重点：
+     *
+     * Byte2~Byte5 = 旧 Sensor ID
+     * Byte11 position = 0x00
+     *
+     * App 收到后，应清除这个旧 Sensor ID 对应的学习记录。
+     */
+    info = TpmsProtocol_makeInfo(TPMS_APP_VENDOR_SENSATA,
+                                 TPMS_APP_MODE_LOCALIZATION,
+                                 TPMS_APP_BATTERY_NORMAL,
+                                 TPMS_APP_LF_NOT_TRIGGERED);
+
+    (void)TpmsBleService_notifyFfb2SensorRaw(
+        (const uint8_t *)g_tpms_learning_white_id[wheel_index],
+        0x00U,
+        0x00U,
+        info,
+        0x00U,
+        0x00U,
+        TPMS_APP_POS_NONE);
+}
+
+
+void TpmsLearning_notifyClearLearnedRecords(void)
+{
+    uint8_t i;
+
+    /*
+     * 注意：
+     * 这个函数必须在 TpmsLearning_startManual() 之前调用。
+     *
+     * 因为 TpmsLearning_startManual() 会调用 TpmsLearning_init()，
+     * 会把上一轮学习记录清掉。
+     */
+    for (i = 0U; i < TPMS_LEARNING_WHEEL_COUNT; i++)
+    {
+        if (g_tpms_learning_white_valid[i] != 0U)
+        {
+            TpmsLearning_sendClearLearnRecordReport(i);
+        }
+    }
+}
 
 /*
  * 学习成功后通过 FFB2 Notify 通知 App。
@@ -249,6 +352,28 @@ void TpmsLearning_init(void)
     g_tpms_learning_done_flags = 0U;
     g_tpms_learning_last_result = TPMS_LEARNING_RESULT_NONE;
     g_tpms_learning_last_position = TPMS_APP_POS_NONE;
+
+    /*
+       * 最近一次物理传感器白名单 index 清空
+       */
+      g_tpms_learning_last_whitelist_index = 0xFFU;
+
+      /*
+       * 四个轮位学习标志清空
+       *
+       * [0,0,0,0] = 四个轮位均未学习
+       */
+      memset((void *)g_tpms_learning_wheel_learn_flag,
+             0,
+             sizeof(g_tpms_learning_wheel_learn_flag));
+
+      /*
+       * 每个学习轮位对应的物理传感器来源清空
+       */
+      g_tpms_learning_white_source_index[0] = 0xFFU;
+      g_tpms_learning_white_source_index[1] = 0xFFU;
+      g_tpms_learning_white_source_index[2] = 0xFFU;
+      g_tpms_learning_white_source_index[3] = 0xFFU;
 
     memset((void *)g_tpms_learning_white_valid,
            0,
@@ -337,7 +462,29 @@ bool TpmsLearning_isActive(void)
 
     return false;
 }
+//7.23add
+static bool TpmsLearning_whitelistIndexAlreadyLearned(uint8_t whitelist_index)
+{
+    uint8_t i;
 
+    if (whitelist_index >= TPMS_LEARNING_WHEEL_COUNT)
+    {
+        return true;
+    }
+
+    for (i = 0U; i < TPMS_LEARNING_WHEEL_COUNT; i++)
+    {
+        if (g_tpms_learning_white_valid[i] != 0U)
+        {
+            if (g_tpms_learning_white_source_index[i] == whitelist_index)
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 void TpmsLearning_onTpmsAdv(const uint8_t *addr,
                             uint8_t addr_type,
@@ -355,35 +502,17 @@ void TpmsLearning_onTpmsAdv(const uint8_t *addr,
         return;
     }
 
+    /*
+     * 不处于学习模式，不处理。
+     */
     if (g_tpms_learning_mode_active == 0U)
     {
         return;
     }
 
-    if (whitelist_index >= TPMS_LEARNING_WHEEL_COUNT)
-    {
-        g_tpms_learning_last_result = TPMS_LEARNING_RESULT_IGNORED;
-        return;
-    }
-
     /*
-     * 当前文档要求：
-     *
-     * 学习人员按 LF → RF → RR → LR 顺序低频触发。
-     *
-     * 因此当前扫到的 whitelist_index 必须等于当前 step。
-     *
-     * step 0 只接受 LF
-     * step 1 只接受 RF
-     * step 2 只接受 RR
-     * step 3 只接受 LR
+     * 四个轮位都学完，退出学习模式。
      */
-    if (whitelist_index != g_tpms_learning_step_index)
-    {
-        g_tpms_learning_last_result = TPMS_LEARNING_RESULT_IGNORED;
-        return;
-    }
-
     if (g_tpms_learning_step_index >= TPMS_LEARNING_WHEEL_COUNT)
     {
         g_tpms_learning_mode_active = 0U;
@@ -392,7 +521,22 @@ void TpmsLearning_onTpmsAdv(const uint8_t *addr,
     }
 
     /*
-     * 只学习 FunctionReuse bit1 = 1 的 TPMS 广播。
+     * 当前扫描到的传感器必须是四个目标白名单传感器之一。
+     */
+    if (whitelist_index >= TPMS_LEARNING_WHEEL_COUNT)
+    {
+        g_tpms_learning_last_result = TPMS_LEARNING_RESULT_IGNORED;
+        return;
+    }
+
+    g_tpms_learning_last_whitelist_index = whitelist_index;
+
+    /*
+     * 只学习 FunctionReuse bit1 = 1 的低频触发包。
+     *
+     * 判断条件：
+     *
+     * mfr_data[5] & 0x02 != 0
      */
     if (TpmsLearning_isFunctionReuseBit1Set(mfr_data, mfr_len) == false)
     {
@@ -401,16 +545,33 @@ void TpmsLearning_onTpmsAdv(const uint8_t *addr,
     }
 
     /*
-     * 当前轮位已经学习过，则不重复通知 App。
+     * 与历史值不同：
+     *
+     * 同一个物理传感器不能重复学习。
+     *
+     * 注意：
+     * 这里不用 addr 判断重复。
+     * 直接用 whitelist_index 判断重复。
      */
-    if (g_tpms_learning_white_valid[whitelist_index] != 0U)
+    if (TpmsLearning_whitelistIndexAlreadyLearned(whitelist_index) == true)
     {
         g_tpms_learning_last_result = TPMS_LEARNING_RESULT_DUPLICATE;
         return;
     }
 
-    wheel_index = whitelist_index;
-    position = TpmsLearning_positionFromWhitelistIndex(whitelist_index);
+    /*
+     * 记录到 TPMS 白名单哪个轮胎位置，由学习顺序决定。
+     *
+     * step 0 = LF 左前
+     * step 1 = RF 右前
+     * step 2 = RR 右后
+     * step 3 = LR 左后
+     *
+     * whitelist_index 只表示当前实际触发的是哪个物理传感器。
+     */
+    wheel_index = g_tpms_learning_step_index;
+
+    position = TpmsLearning_positionFromWhitelistIndex(wheel_index);
 
     if (position == TPMS_APP_POS_NONE)
     {
@@ -418,10 +579,11 @@ void TpmsLearning_onTpmsAdv(const uint8_t *addr,
         return;
     }
 
-    memset(sensor_id,
-           0,
-           sizeof(sensor_id));
+    memset(sensor_id, 0, sizeof(sensor_id));
 
+    /*
+     * Sensor ID 根据实际触发到的物理传感器生成。
+     */
     if (TpmsLearning_makeSensorIdFromWhitelistIndex(whitelist_index,
                                                    sensor_id) == false)
     {
@@ -430,21 +592,40 @@ void TpmsLearning_onTpmsAdv(const uint8_t *addr,
     }
 
     /*
-     * 写入学习白名单。
+     * 写入 TPMS 学习白名单。
+     *
+     * 第一次有效低频触发包 -> LF
+     * 第二次有效低频触发包 -> RF
+     * 第三次有效低频触发包 -> RR
+     * 第四次有效低频触发包 -> LR
      */
     g_tpms_learning_white_valid[wheel_index] = 1U;
     g_tpms_learning_white_position[wheel_index] = position;
     g_tpms_learning_white_rssi[wheel_index] = rssi;
     g_tpms_learning_white_addr_type[wheel_index] = addr_type;
 
+    /*
+     * 记录当前轮位对应的是哪个物理传感器。
+     */
+    g_tpms_learning_white_source_index[wheel_index] = whitelist_index;
+
+    /*
+     * 保留 MAC 地址，后续真实胎压胎温匹配要用。
+     */
     memcpy((void *)g_tpms_learning_white_addr[wheel_index],
            addr,
            6U);
 
+    /*
+     * 保存 Sensor ID。
+     */
     memcpy((void *)g_tpms_learning_white_id[wheel_index],
            sensor_id,
            4U);
 
+    /*
+     * 保存 FunctionReuse。
+     */
     g_tpms_learning_white_function_reuse[wheel_index][0] =
         mfr_data[TPMS_LEARNING_FUNCTION_REUSE0_INDEX];
 
@@ -473,23 +654,38 @@ void TpmsLearning_onTpmsAdv(const uint8_t *addr,
     g_tpms_learning_last_position = position;
     g_tpms_learning_last_result = TPMS_LEARNING_RESULT_SUCCESS;
 
+    /*
+     * 已学习数量 +1。
+     */
     g_tpms_learning_learned_count++;
 
-    TpmsLearning_setDoneFlag(position);
+    /*
+     * 学习标志置位：
+     *
+     * 旧轮位保持 1，新轮位也置 1。
+     */
+    TpmsLearning_setDoneFlag(wheel_index, position);
 
     /*
-     * 重点：
-     * 学习成功后，通过 FFB2 Notify 通知 App。
+     * 学习成功后，通过 FFB2 Notify 发给 App。
      *
-     * App 收到后，根据 Byte11 position 更新 UI。
+     * App 根据 Byte11 position 更新 UI：
+     *
+     * LF = 0x01
+     * RF = 0x02
+     * RR = 0x08
+     * LR = 0x04
      */
     TpmsLearning_sendLearnDoneReport(wheel_index);
 
     /*
-     * 移动到下一个学习位置。
+     * 进入下一个学习轮位。
      */
     g_tpms_learning_step_index++;
 
+    /*
+     * 四个轮位都学习完成。
+     */
     if (g_tpms_learning_step_index >= TPMS_LEARNING_WHEEL_COUNT)
     {
         g_tpms_learning_mode_active = 0U;
