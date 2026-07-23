@@ -23,6 +23,10 @@ TpmsPhoneCmdType_t TpmsPhoneCmd_getTypeByFunctionId(uint8_t function_id)
 
     switch (function_id)
     {
+        case TPMS_PHONE_CMD_ID_CONNECT_REQUEST:
+            type = TPMS_PHONE_CMD_TYPE_CONNECT_REQUEST;
+            break;
+
         case TPMS_PHONE_CMD_ID_WAKEUP:
             type = TPMS_PHONE_CMD_TYPE_WAKEUP;
             break;
@@ -114,8 +118,17 @@ TpmsPhoneCmdResult_t TpmsPhoneCmd_handle(const TpmsPhoneCmd_t *cmd)
         return TPMS_PHONE_CMD_RESULT_ERROR;
     }
 
+    /*
+     * 注意：
+     * 这里 switch 的是 cmd->type，
+     * 所以 case 里面必须全部使用 TPMS_PHONE_CMD_TYPE_xxx，
+     * 不能写 TPMS_PHONE_CMD_RESULT_xxx。
+     */
     switch (cmd->type)
     {
+        case TPMS_PHONE_CMD_TYPE_CONNECT_REQUEST:
+            return TPMS_PHONE_CMD_RESULT_CONNECT_REQUESTED;
+
         case TPMS_PHONE_CMD_TYPE_WAKEUP:
             return TPMS_PHONE_CMD_RESULT_WAKEUP_REQUESTED;
 

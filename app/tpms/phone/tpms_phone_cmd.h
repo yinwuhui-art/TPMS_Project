@@ -23,13 +23,13 @@ extern "C" {
  *
  * Byte0 = functionID
  *
+ * 0x00：App 连接握手请求
  * 0x01：唤醒胎压传感器
  * 0x02：开始手动学习 Start_Learn_TPMS
- *
- * 后续如果 APP 协议增加其他命令，再继续扩展。
  */
 #define TPMS_PHONE_CMD_PAYLOAD_MAX_LEN       (16U)
 
+#define TPMS_PHONE_CMD_ID_CONNECT_REQUEST    (0x00U)
 #define TPMS_PHONE_CMD_ID_WAKEUP             (0x01U)
 #define TPMS_PHONE_CMD_ID_START_LEARN        (0x02U)
 #define TPMS_PHONE_CMD_ID_QUERY_DATA         (0x03U)
@@ -37,37 +37,37 @@ extern "C" {
 #define TPMS_PHONE_CMD_ID_CLEAR_LEARN        (0x05U)
 
 
+/*
+ * 解析出来的命令类型
+ */
 typedef enum
 {
     TPMS_PHONE_CMD_TYPE_NONE = 0,
-    TPMS_PHONE_CMD_TYPE_WAKEUP,
-    TPMS_PHONE_CMD_TYPE_START_LEARN,
-    TPMS_PHONE_CMD_TYPE_QUERY_DATA,
-    TPMS_PHONE_CMD_TYPE_STOP_LEARN,
-    TPMS_PHONE_CMD_TYPE_CLEAR_LEARN,
-    TPMS_PHONE_CMD_TYPE_UNKNOWN
+    TPMS_PHONE_CMD_TYPE_CONNECT_REQUEST = 1,
+    TPMS_PHONE_CMD_TYPE_WAKEUP = 2,
+    TPMS_PHONE_CMD_TYPE_START_LEARN = 3,
+    TPMS_PHONE_CMD_TYPE_QUERY_DATA = 4,
+    TPMS_PHONE_CMD_TYPE_STOP_LEARN = 5,
+    TPMS_PHONE_CMD_TYPE_CLEAR_LEARN = 6,
+    TPMS_PHONE_CMD_TYPE_UNKNOWN = 255
 } TpmsPhoneCmdType_t;
 
+
 /*
- * ============================================================
- * 兼容 tpms_app.c 的命令处理结果
- * ============================================================
- *
- * 注意：
- * 这个 Result 是给 tpms_app.c 用的。
- * TpmsPhoneCmdType_t 表示“解析出来的命令类型”；
- * TpmsPhoneCmdResult_t 表示“TPMS 应用层处理后的结果”。
+ * TPMS 应用层处理结果
  */
 typedef enum
 {
     TPMS_PHONE_CMD_RESULT_NONE = 0,
-    TPMS_PHONE_CMD_RESULT_WAKEUP_REQUESTED,
-    TPMS_PHONE_CMD_RESULT_START_LEARN,
-    TPMS_PHONE_CMD_RESULT_STOP_LEARN,
-    TPMS_PHONE_CMD_RESULT_CLEAR_LEARN,
-    TPMS_PHONE_CMD_RESULT_QUERY_DATA,
-    TPMS_PHONE_CMD_RESULT_ERROR
+    TPMS_PHONE_CMD_RESULT_CONNECT_REQUESTED = 1,
+    TPMS_PHONE_CMD_RESULT_WAKEUP_REQUESTED = 2,
+    TPMS_PHONE_CMD_RESULT_START_LEARN = 3,
+    TPMS_PHONE_CMD_RESULT_STOP_LEARN = 4,
+    TPMS_PHONE_CMD_RESULT_CLEAR_LEARN = 5,
+    TPMS_PHONE_CMD_RESULT_QUERY_DATA = 6,
+    TPMS_PHONE_CMD_RESULT_ERROR = 255
 } TpmsPhoneCmdResult_t;
+
 
 typedef struct
 {
@@ -83,9 +83,6 @@ typedef struct
 
     /*
      * Byte1 之后的附加数据。
-     *
-     * 当前 0x01、0x02 暂时只用 Byte0，
-     * 所以 payload_len 通常为 0。
      */
     uint8_t payload[TPMS_PHONE_CMD_PAYLOAD_MAX_LEN];
     uint16_t payload_len;
@@ -93,29 +90,14 @@ typedef struct
 } TpmsPhoneCmd_t;
 
 
-/*
- * 初始化命令模块。
- */
 void TpmsPhoneCmd_init(void);
 
-/*
- * 解析手机 APP 写入 FFB1 的数据。
- */
 bool TpmsPhoneCmd_parse(const uint8_t *data,
                         uint16_t len,
                         TpmsPhoneCmd_t *cmd);
 
-/*
- * 根据 functionID 获取命令类型。
- */
 TpmsPhoneCmdType_t TpmsPhoneCmd_getTypeByFunctionId(uint8_t function_id);
 
-/*
- * 兼容 tpms_app.c 的旧接口。
- *
- * 直接处理手机 APP 写入 FFB1 的数据，
- * 返回 TPMS 应用层处理结果。
- */
 TpmsPhoneCmdResult_t TpmsPhoneCmd_handle(const TpmsPhoneCmd_t *cmd);
 
 #ifdef __cplusplus

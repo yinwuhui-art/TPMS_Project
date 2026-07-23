@@ -1,49 +1,46 @@
 /*
  * tpms_sensor_parser.c
  *
- *  Created on: 2026年7月2日
- *      Author: yinwuhui
+ * TPMS sensor data parser
  */
 
-
-
-
 #include "tpms_sensor_parser.h"
-#include <stddef.h>
-#include <string.h>
 
-bool TpmsSensorParser_parse(const TpmsBleAdvReport_t *report,
-                            TpmsSensorFrame_t *out_frame)
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+
+void TpmsSensorParser_init(void)
 {
-    if ((report == NULL) || (out_frame == NULL))
+    /*
+     * 当前解析模块暂时没有内部状态。
+     */
+}
+
+
+bool TpmsSensorParser_parseSnp756Indicate(const uint8_t *data,
+                                          uint16_t len,
+                                          uint8_t *pressure_raw,
+                                          uint8_t *temperature_raw,
+                                          uint8_t *status_raw)
+{
+    if ((data == NULL) ||
+        (pressure_raw == NULL) ||
+        (temperature_raw == NULL) ||
+        (status_raw == NULL))
     {
         return false;
     }
 
-    /*
-     * 这里暂时不真正解析。
-     *
-     * 后面等你确认四个胎压传感器的 BLE 广播数据格式之后，
-     * 再在这里解析：
-     *
-     * 1. Sensor ID
-     * 2. Pressure
-     * 3. Temperature
-     * 4. Battery
-     * 5. Status / Fault
-     * 6. Wheel position / learning result
-     */
+    if (len < TPMS_SNP756_INDICATE_MIN_LEN)
+    {
+        return false;
+    }
 
-    memset(out_frame, 0, sizeof(TpmsSensorFrame_t));
+    *temperature_raw = data[TPMS_SNP756_IDX_TEMPERATURE_RAW];
+    *status_raw = data[TPMS_SNP756_IDX_STATUS_RAW];
+    *pressure_raw = data[TPMS_SNP756_IDX_PRESSURE_RAW];
 
-    out_frame->sensor_id = 0xFFFFFFFFUL;
-    out_frame->wheel_pos = TPMS_WHEEL_UNKNOWN;
-    out_frame->pressure_kpa = -1;
-    out_frame->temperature_c = 0x7FFF;
-    out_frame->battery_mv = 0;
-    out_frame->status = 0;
-    out_frame->rssi = report->rssi;
-    out_frame->timestamp_ms = report->timestamp_ms;
-
-    return false;
+    return true;
 }

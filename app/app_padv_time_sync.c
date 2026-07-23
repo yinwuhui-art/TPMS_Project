@@ -266,7 +266,7 @@ static uint8_t AppPadvTimeSync_scanStart(void)
     BLEAppUtil_ScanInit_t scanInitParams =
     {
         .primPhy            = DEFAULT_SCAN_PHY,
-        .scanType           = SCAN_TYPE_PASSIVE,
+        .scanType           = SCAN_TYPE_Active,
         .scanInterval       = APP_PADV_TIME_SYNC_INTERVAL,
         .scanWindow         = APP_PADV_TIME_SYNC_SCAN_WINDOW,
         .advReportFields    = SCAN_ADVRPT_FLD_ADDRTYPE | SCAN_ADVRPT_FLD_ADDRESS |

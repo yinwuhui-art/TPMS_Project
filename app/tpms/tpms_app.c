@@ -1,57 +1,91 @@
+/*
+ * tpms_app.c
+ *
+ * TPMS application layer
+ */
+
 #include "tpms_app.h"
 
-#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "tpms_config.h"
+#include "tpms_types.h"
 
+#include "core/tpms_wheel_manager.h"
 #include "core/tpms_fault.h"
 #include "core/tpms_localization.h"
-#include "core/tpms_wheel_manager.h"
+#include "core/tpms_learning.h"
 
 #include "sensor/tpms_sensor_parser.h"
 
-#include "ble/tpms_ble_service.h"
 #include "ble/tpms_ble_scan.h"
+#include "ble/tpms_ble_service.h"
 #include "ble/tpms_ble_wakeup.h"
-
-#include "storage/tpms_storage.h"
 
 #include "phone/tpms_phone_cmd.h"
 #include "phone/tpms_protocol.h"
 
+#include "storage/tpms_storage.h"
+
+
+/*
+ * ============================================================
+ * 本文件内部状态变量
+ * ============================================================
+ */
 
 static bool s_tpms_started = false;
 
 
 /*
- * 本文件内部测试函数声明。
- *
- * 作用：
- * 手机 APP 往 FFB1 写 01 或 02 后，
- * BLEM 先通过 FFB2 回复一帧正式 12 字节测试报文。
+ * ============================================================
+ * 内部函数声明
+ * ============================================================
  */
+
 static void TpmsApp_sendTestFfb2Report(uint8_t position);
 
 
+/*
+ * ============================================================
+ * TPMS 模块初始化
+ * ============================================================
+ */
+
 void TPMS_init(void)
 {
-    TpmsStorage_init();
-
+    /*
+     * 各业务模块初始化
+     */
+    TpmsWheelManager_init();
     TpmsFault_init();
     TpmsLocalization_init();
-    TpmsWheelManager_init();
+    TpmsSensorParser_init();
 
-    TpmsBleService_init();
+    /*
+     * BLE 扫描 / GATT 服务初始化
+     */
     TpmsBleScan_init();
-    TpmsBleWakeup_init();
+    TpmsBleService_init();
 
+    /*
+     * 存储、手机命令、自学习初始化
+     */
+    TpmsStorage_init();
     TpmsPhoneCmd_init();
+    TpmsLearning_init();
 
     s_tpms_started = false;
 }
 
+
+/*
+ * ============================================================
+ * TPMS 模块启动
+ * ============================================================
+ */
 
 void TPMS_start(void)
 {
@@ -59,11 +93,44 @@ void TPMS_start(void)
 }
 
 
+/*
+ * ============================================================
+ * TPMS 模块停止
+ * ============================================================
+ */
+
 void TPMS_stop(void)
 {
     s_tpms_started = false;
+
+    /*
+     * 如果正在学习，停止学习模式。
+     */
+    TpmsLearning_stopManual();
 }
 
+
+/*
+ * ============================================================
+ * TPMS 是否已经启动
+ * ============================================================
+ */
+
+bool TPMS_isStarted(void)
+{
+    return s_tpms_started;
+}
+
+
+/*
+ * ============================================================
+ * TPMS 周期任务
+ * ============================================================
+ *
+ * 现在主要保留接口。
+ * 后面如果加入超时检测、周期上报、Flash 保存等逻辑，
+ * 可以放在这里。
+ */
 
 void TPMS_periodic(uint32_t now_ms)
 {
@@ -72,76 +139,35 @@ void TPMS_periodic(uint32_t now_ms)
         return;
     }
 
-    TpmsWheelManager_checkTimeout(now_ms);
+    /*
+     * 当前 BLE Service 周期函数里暂时可以为空。
+     */
     TpmsBleService_periodic(now_ms);
-    TpmsBleWakeup_periodic(now_ms);
 }
 
 
-void TPMS_onBleAdvReport(const TpmsBleAdvReport_t *report)
-{
-    TpmsSensorFrame_t frame;
-
-    if (s_tpms_started == false)
-    {
-        return;
-    }
-
-    if (report == NULL)
-    {
-        return;
-    }
-
-    if (TpmsSensorParser_parse(report, &frame) == true)
-    {
-        /*
-         * 传感器解析出来后，先做轮位判断。
-         *
-         * 如果广播数据里面已经带有轮位，TpmsLocalization_onSensorFrame()
-         * 会直接返回 true。
-         *
-         * 如果广播数据里面只有 sensor_id，则通过绑定表 / 自定位算法判断轮位。
-         */
-        if (TpmsLocalization_onSensorFrame(&frame) == false)
-        {
-            return;
-        }
-
-        if (TpmsWheelManager_update(&frame) == true)
-        {
-            const TpmsWheelData_t *wheel;
-
-            wheel = TpmsWheelManager_get(frame.wheel_pos);
-
-            if (wheel != NULL)
-            {
-                /*
-                 * 注意：
-                 * TpmsBleService_notifyWheelData() 现在应该已经被改成
-                 * 正式 FFB2 12 字节格式，不再发送 A1/A2 临时报文。
-                 */
-                (void)TpmsBleService_notifyWheelData(wheel);
-            }
-        }
-    }
-}
-
+/*
+ * ============================================================
+ * 手机 App 写入 FFB1 后的处理入口
+ * ============================================================
+ *
+ * FFB1:
+ * 0000FFB1-0000-1000-8000-00805F9B34FB
+ *
+ * App -> BLEM
+ */
 
 void TPMS_onPhoneRxData(const uint8_t *data, uint16_t len)
 {
     TpmsPhoneCmd_t cmd;
     TpmsPhoneCmdResult_t result;
-    uint8_t i;
-
-    if (s_tpms_started == false)
-    {
-        return;
-    }
 
     if ((data == NULL) || (len == 0U))
     {
         return;
     }
+
+    memset(&cmd, 0, sizeof(cmd));
 
     if (TpmsPhoneCmd_parse(data, len, &cmd) == false)
     {
@@ -152,81 +178,99 @@ void TPMS_onPhoneRxData(const uint8_t *data, uint16_t len)
 
     switch (result)
     {
+        case TPMS_PHONE_CMD_RESULT_CONNECT_REQUESTED:
+        {
+            /*
+             * App 连接后的握手请求。
+             *
+             * 之前 App 会写 FFB1 = 00。
+             * 为了保持连接流程，仍然返回一帧测试 FFB2。
+             *
+             * Byte11 position = 0x00，表示不是具体轮位学习结果。
+             */
+            TpmsApp_sendTestFfb2Report(TPMS_APP_POS_NONE);
+
+            break;
+        }
+
         case TPMS_PHONE_CMD_RESULT_WAKEUP_REQUESTED:
         {
             /*
-             * 手机 APP 写 FFB1 = 01
+             * App 写 FFB1 = 01。
              *
-             * 当前先回复一帧正式 12 字节测试报文。
+             * 当前阶段暂时返回一帧测试 FFB2，
+             * 用于证明 App -> BLEM -> App 通路正常。
              *
-             * 期望手机 APP / nRF Connect 收到：
-             *
-             * 00 01 12 34 56 78 50 5A 25 FF FF 00
-             *
-             * 最后一个字节 00 表示未知轮位。
+             * 真正唤醒 TPMS 传感器的逻辑后面再接 LF / Central / 写命令。
              */
             TpmsApp_sendTestFfb2Report(TPMS_APP_POS_NONE);
+
             break;
         }
 
         case TPMS_PHONE_CMD_RESULT_START_LEARN:
         {
             /*
-             * 手机 APP 写 FFB1 = 02
+             * App 写 FFB1 = 02。
              *
-             * 当前先模拟左前 LF 学习结果。
+             * 文档里的 Start_Learn_TPMS。
              *
-             * 期望手机 APP / nRF Connect 收到：
+             * 注意：
+             * 这里不要直接发 FFB2 学习成功帧。
              *
-             * 00 01 12 34 56 78 50 5A 25 FF FF 01
+             * 正确流程：
              *
-             * 最后一个字节 01 表示 LF 左前轮。
+             * 1. 这里调用 TpmsLearning_startManual()
+             * 2. BLEM 进入手动学习模式
+             * 3. 学习人员按 LF -> RF -> RR -> LR 顺序低频触发
+             * 4. tpms_ble_scan.c 扫到对应白名单地址
+             * 5. tpms_ble_scan.c 调用 TpmsLearning_onTpmsAdv()
+             * 6. tpms_learning.c 判断 FunctionReuse bit1 = 1
+             * 7. 学习成功后，由 tpms_learning.c 通过 FFB2 Notify 通知 App
              */
-            TpmsApp_sendTestFfb2Report(TPMS_APP_POS_LF);
+            TpmsLearning_startManual();
+
             break;
         }
 
         case TPMS_PHONE_CMD_RESULT_QUERY_DATA:
         {
             /*
-             * 手机 APP 查询当前四轮数据。
+             * App 查询数据。
              *
-             * 当前先逐轮调用 notifyWheelData。
-             * 后续真正解析胎压传感器数据后，再把四轮真实数据打包发送。
+             * 当前阶段还没有把 BLEM Central 连接 SNP756 的真实胎压胎温
+             * 接进来，所以这里先不做真实数据上报。
+             *
+             * 后续接入 05000200 Indicate 后，可以在这里上报已学习轮位的
+             * 最新胎压胎温。
              */
-            for (i = 0U; i < TPMS_WHEEL_NUM; i++)
-            {
-                const TpmsWheelData_t *wheel;
-
-                wheel = TpmsWheelManager_get((TpmsWheelPos_t)i);
-
-                if (wheel != NULL)
-                {
-                    (void)TpmsBleService_notifyWheelData(wheel);
-                }
-            }
-
             break;
         }
 
         case TPMS_PHONE_CMD_RESULT_STOP_LEARN:
         {
             /*
-             * 后续这里接停止学习流程。
+             * 停止手动学习。
              */
+            TpmsLearning_stopManual();
+
             break;
         }
 
         case TPMS_PHONE_CMD_RESULT_CLEAR_LEARN:
         {
             /*
-             * 后续这里接清除学习结果流程。
+             * 清除学习结果。
+             *
+             * 当前第一版只清 RAM 里的学习状态。
+             * 后续如果保存到 Flash，这里还要调用 Flash 擦除接口。
              */
+            TpmsLearning_init();
+
             break;
         }
 
         case TPMS_PHONE_CMD_RESULT_ERROR:
-        case TPMS_PHONE_CMD_RESULT_NONE:
         default:
         {
             break;
@@ -235,27 +279,44 @@ void TPMS_onPhoneRxData(const uint8_t *data, uint16_t len)
 }
 
 
-const TpmsWheelData_t *TPMS_getWheelData(TpmsWheelPos_t wheel_pos)
-{
-    return TpmsWheelManager_get(wheel_pos);
-}
-
+/*
+ * ============================================================
+ * 发送测试 FFB2 报文
+ * ============================================================
+ *
+ * 主要用于：
+ *
+ * 1. App 连接握手测试
+ * 2. FFB1 = 01 唤醒命令测试
+ *
+ * 注意：
+ * 手动学习成功帧不从这里发。
+ * 手动学习成功帧由 tpms_learning.c 发。
+ */
 
 static void TpmsApp_sendTestFfb2Report(uint8_t position)
 {
-    uint8_t sensor_id[4] = {0x12U, 0x34U, 0x56U, 0x78U};
+    uint8_t sensor_id[4];
     uint8_t info;
 
     /*
-     * Byte8 Info:
+     * 测试 ID：
+     * 12 34 56 78
+     */
+    sensor_id[0] = 0x12U;
+    sensor_id[1] = 0x34U;
+    sensor_id[2] = 0x56U;
+    sensor_id[3] = 0x78U;
+
+    /*
+     * Info:
      *
-     * 厂家：森萨塔 001
-     * 模式：运行模式 001
-     * 电池：正常 0
-     * 低频：已触发 1
+     * Vendor = Sensata
+     * Mode = Running
+     * Battery = Normal
+     * LF = Triggered
      *
-     * Byte8 = 001 001 0 1
-     * Byte8 = 0x25
+     * 按你之前定义，生成结果一般是 0x25。
      */
     info = TpmsProtocol_makeInfo(TPMS_APP_VENDOR_SENSATA,
                                  TPMS_APP_MODE_RUNNING,
@@ -263,24 +324,29 @@ static void TpmsApp_sendTestFfb2Report(uint8_t position)
                                  TPMS_APP_LF_TRIGGERED);
 
     /*
-     * 正式 FFB2 12 字节格式：
+     * FFB2 12 字节格式：
      *
      * Byte0  = 00
      * Byte1  = 01
-     * Byte2  = 12
-     * Byte3  = 34
-     * Byte4  = 56
-     * Byte5  = 78
-     * Byte6  = 50
-     * Byte7  = 5A
-     * Byte8  = 25
-     * Byte9  = FF
-     * Byte10 = FF
-     * Byte11 = position
+     * Byte2  = ID0
+     * Byte3  = ID1
+     * Byte4  = ID2
+     * Byte5  = ID3
+     * Byte6  = PressureRaw
+     * Byte7  = TemperatureRaw
+     * Byte8  = Info
+     * Byte9  = FunctionReuse0
+     * Byte10 = FunctionReuse1
+     * Byte11 = Position
+     *
+     * 这里 PressureRaw / TemperatureRaw 用之前测试值：
+     *
+     * 0xC7 -> 约 273 kPa
+     * 0x38 -> 约 6℃
      */
     (void)TpmsBleService_notifyFfb2SensorRaw(sensor_id,
-                                            0x50U,
-                                            0x5AU,
+                                            0xC7U,
+                                            0x38U,
                                             info,
                                             TPMS_APP_FUNC_REUSE_DEFAULT_0,
                                             TPMS_APP_FUNC_REUSE_DEFAULT_1,

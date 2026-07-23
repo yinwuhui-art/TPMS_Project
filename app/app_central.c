@@ -105,7 +105,7 @@ const BLEAppUtil_ScanInit_t centralScanInitParams =
     /*! Opt SCAN_PRIM_PHY_1M | SCAN_PRIM_PHY_CODED */
     .primPhy                    = DEFAULT_SCAN_PHY,
 
-    /*! Opt SCAN_TYPE_ACTIVE | SCAN_TYPE_PASSIVE */
+    /*! Opt SCAN_TYPE_ACTIVE | SCAN_TYPE_Active */
     .scanType                   = DEFAULT_SCAN_TYPE,
 
     /*! Scan interval shall be greater than or equal to scan window */

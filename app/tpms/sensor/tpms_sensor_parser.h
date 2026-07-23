@@ -1,42 +1,49 @@
 /*
  * tpms_sensor_parser.h
  *
- *  Created on: 2026年7月2日
- *      Author: yinwuhui
+ * TPMS sensor data parser
  */
 
 #ifndef TPMS_SENSOR_PARSER_H_
 #define TPMS_SENSOR_PARSER_H_
 
-#include <stdint.h>
-#include <stdbool.h>
-
-#include "../tpms_types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct
-{
-    uint32_t sensor_id;
-    TpmsWheelPos_t wheel_pos;
+#include <stdint.h>
+#include <stdbool.h>
 
-    int16_t pressure_kpa;
-    int16_t temperature_c;
+/*
+ * SNP756 Indicate 数据长度
+ *
+ * 目前 nRF Connect 看到：
+ * 00 38 0F C7 00 00 00
+ */
+#define TPMS_SNP756_INDICATE_MIN_LEN         (7U)
 
-    uint16_t battery_mv;
-    uint16_t status;
+/*
+ * SNP756 Indicate 字节位置
+ *
+ * Byte1：温度 raw
+ * Byte2：状态 raw
+ * Byte3：压力 raw
+ */
+#define TPMS_SNP756_IDX_TEMPERATURE_RAW      (1U)
+#define TPMS_SNP756_IDX_STATUS_RAW           (2U)
+#define TPMS_SNP756_IDX_PRESSURE_RAW         (3U)
 
-    int8_t rssi;
-    uint32_t timestamp_ms;
-} TpmsSensorFrame_t;
 
-bool TpmsSensorParser_parse(const TpmsBleAdvReport_t *report,
-                            TpmsSensorFrame_t *out_frame);
+void TpmsSensorParser_init(void);
+
+bool TpmsSensorParser_parseSnp756Indicate(const uint8_t *data,
+                                          uint16_t len,
+                                          uint8_t *pressure_raw,
+                                          uint8_t *temperature_raw,
+                                          uint8_t *status_raw);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* TPMS_SENSOR_PARSER_H_ */
