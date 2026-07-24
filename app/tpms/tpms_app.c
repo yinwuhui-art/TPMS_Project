@@ -134,6 +134,7 @@ bool TPMS_isStarted(void)
 
 void TPMS_periodic(uint32_t now_ms)
 {
+    TpmsBleService_periodic(now_ms);
     if (s_tpms_started == false)
     {
         return;

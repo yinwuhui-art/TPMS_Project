@@ -27,13 +27,15 @@ extern "C" {
 /*
  * 学习结果
  */
-#define TPMS_LEARNING_RESULT_NONE            (0U)
-#define TPMS_LEARNING_RESULT_STARTED         (1U)
-#define TPMS_LEARNING_RESULT_SUCCESS         (2U)
-#define TPMS_LEARNING_RESULT_DUPLICATE       (3U)
-#define TPMS_LEARNING_RESULT_IGNORED         (4U)
-#define TPMS_LEARNING_RESULT_FINISHED        (5U)
-#define TPMS_LEARNING_RESULT_ERROR           (255U)
+#define TPMS_LEARNING_RESULT_IDLE        (0U)
+#define TPMS_LEARNING_RESULT_NONE        (0U)
+#define TPMS_LEARNING_RESULT_STARTED     (1U)
+#define TPMS_LEARNING_RESULT_SUCCESS     (2U)
+#define TPMS_LEARNING_RESULT_DUPLICATE   (3U)
+#define TPMS_LEARNING_RESULT_IGNORE      (4U)
+#define TPMS_LEARNING_RESULT_IGNORED     (4U)
+#define TPMS_LEARNING_RESULT_FINISHED    (5U)
+#define TPMS_LEARNING_RESULT_ERROR       (255U)
 
 /*
  * Manufacturer Data 中 FunctionReuse 字节位置。
@@ -67,6 +69,9 @@ extern volatile uint8_t  g_tpms_learning_learned_count;
 extern volatile uint8_t  g_tpms_learning_done_flags;
 extern volatile uint8_t  g_tpms_learning_last_result;
 extern volatile uint8_t  g_tpms_learning_last_position;
+
+
+
 
 
 /*
@@ -131,7 +136,8 @@ extern volatile uint8_t  g_tpms_learning_last_id[4];
 extern volatile int8_t   g_tpms_learning_last_rssi;
 extern volatile uint8_t  g_tpms_learning_last_addr_type;
 extern volatile uint8_t  g_tpms_learning_last_function_reuse[2];
-
+extern volatile uint8_t g_tpms_learning_wheel_learn_flag[4];
+extern volatile uint8_t g_tpms_learning_white_source_index[4];
 
 /*
  * ============================================================
@@ -167,12 +173,13 @@ void TpmsLearning_notifyClearLearnedRecords(void);
  * 2 = RR 右后
  * 3 = LR 左后
  */
-void TpmsLearning_onTpmsAdv(const uint8_t *addr,
-                            uint8_t addr_type,
-                            int8_t rssi,
-                            uint8_t whitelist_index,
-                            const uint8_t *mfr_data,
-                            uint8_t mfr_len);
+void TpmsLearning_onTpmsAdv(
+        uint8_t whitelist_index,
+        const uint8_t *addr,
+        uint8_t addr_type,
+        int8_t rssi,
+        const uint8_t *mfr_data,
+        uint8_t mfr_len);
 
 #ifdef __cplusplus
 }

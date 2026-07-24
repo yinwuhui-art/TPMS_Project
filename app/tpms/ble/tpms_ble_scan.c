@@ -1029,13 +1029,13 @@ bool TpmsBleScan_handleAdvReport(const uint8_t *addr,
          * 学习模块内部继续判断：
          * FunctionReuse bit1 是否为 1。
          */
-        TpmsLearning_onTpmsAdv(addr,
-                               addr_type,
-                               rssi,
-                               g_tpms_scan_last_whitelist_index,
-                               (const uint8_t *)g_tpms_scan_last_mfr_data,
-                               g_tpms_scan_last_mfr_len);
-
+        TpmsLearning_onTpmsAdv(
+                g_tpms_scan_last_whitelist_index,
+                addr,
+                addr_type,
+                rssi,
+                g_tpms_scan_last_mfr_data,
+                g_tpms_scan_last_mfr_len);
         return true;
     }
 

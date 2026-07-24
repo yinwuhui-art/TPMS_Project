@@ -36,6 +36,9 @@
 								<option id="com.ti.ccstudio.buildDefinitions.TMS470_TICLANG_3.2.compilerID.ENDIAN_NESS__BIG_LITTLE.1220255421" name="Endian-ness (big/little) [See 'General' page to edit]" superClass="com.ti.ccstudio.buildDefinitions.TMS470_TICLANG_3.2.compilerID.ENDIAN_NESS__BIG_LITTLE" useByScannerDiscovery="false" value="com.ti.ccstudio.buildDefinitions.TMS470_TICLANG_3.2.compilerID.ENDIAN_NESS__BIG_LITTLE.MLITTLE_ENDIAN" valueType="enumerated"/>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.ti.ccstudio.buildDefinitions.TMS470_TICLANG_3.2.compilerID.INCLUDE_PATH.610722466" name="Add dir to #include search path (-I)" superClass="com.ti.ccstudio.buildDefinitions.TMS470_TICLANG_3.2.compilerID.INCLUDE_PATH" valueType="includePath">
 									<listOptionValue builtIn="false" value="${PROJECT_ROOT}/app/tpms/diag"/>
+									<listOptionValue builtIn="false" value="D:\CCS_Item\GMW TPMS BLE-1.2\basic_ble_LP_EM_CC2745R10_Q1_freertos_ticlang\common\Profiles\simple_gatt"/>
+									<listOptionValue builtIn="false" value="D:/CCS_Item/basic_ble_LP_EM_CC2745R10_Q1_kuangjia/common/Profiles/simple_gatt"/>
+									<listOptionValue builtIn="false" value="${PROJECT_ROOT}/common/Profiles/simple_gatt"/>
 									<listOptionValue builtIn="false" value="${PROJECT_ROOT}/common"/>
 									<listOptionValue builtIn="false" value="${COM_TI_SIMPLELINK_LOWPOWER_F3_SDK_INCLUDE_PATH}"/>
 									<listOptionValue builtIn="false" value="${PROJECT_ROOT}/app/tpms/phone"/>
