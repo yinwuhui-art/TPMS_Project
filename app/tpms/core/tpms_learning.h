@@ -38,22 +38,25 @@ extern "C" {
 #define TPMS_LEARNING_RESULT_ERROR       (255U)
 
 /*
- * Manufacturer Data 中 FunctionReuse 字节位置。
+ * snTPMS Manufacturer Data：
  *
- * 当前按之前抓到的格式：
+ * mfr_data[0..3] = Sensor ID
+ * mfr_data[4]    = Pressure
+ * mfr_data[5]    = Temperature
+ * mfr_data[6]    = Info
+ * mfr_data[7..8] = FunctionReuse
+ * mfr_data[9]    = CRC8（不进入 FFB2）
  *
- * FF FF 00 03 00 03
- *
- * mfr_data[4] = FunctionReuse0
- * mfr_data[5] = FunctionReuse1
- *
- * 文档要求：
- * FunctionReuse 字节 bit1 = 1
- *
- * 当前用 FunctionReuse1 的 bit1 判断。
+ * 自学习使用 FunctionReuse1 的 bit1 判断低频触发。
  */
-#define TPMS_LEARNING_FUNCTION_REUSE0_INDEX  (4U)
-#define TPMS_LEARNING_FUNCTION_REUSE1_INDEX  (5U)
+#define TPMS_LEARNING_MFR_DATA_LEN           (10U)
+#define TPMS_LEARNING_SENSOR_ID_INDEX        (0U)
+#define TPMS_LEARNING_PRESSURE_INDEX         (4U)
+#define TPMS_LEARNING_TEMPERATURE_INDEX      (5U)
+#define TPMS_LEARNING_INFO_INDEX             (6U)
+#define TPMS_LEARNING_FUNCTION_REUSE0_INDEX  (7U)
+#define TPMS_LEARNING_FUNCTION_REUSE1_INDEX  (8U)
+#define TPMS_LEARNING_CRC8_INDEX             (9U)
 #define TPMS_LEARNING_TRIGGER_BIT_MASK       (0x02U)
 
 

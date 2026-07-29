@@ -41,22 +41,22 @@ extern "C" {
  *
  * 四个胎压传感器名称均为：
  *
- * SNP756
+ * snTPMS
  *
  * HEX:
- * 53 4E 50 37 35 36
+ * 73 6E 54 50 4D 53
  */
 
 #define TPMS_FILTER_BY_DEVICE_NAME           (1U)
 
 #define TPMS_TARGET_NAME_LEN                 (6U)
 
-#define TPMS_TARGET_NAME_BYTE_0              (0x53U)    /* S */
-#define TPMS_TARGET_NAME_BYTE_1              (0x4EU)    /* N */
-#define TPMS_TARGET_NAME_BYTE_2              (0x50U)    /* P */
-#define TPMS_TARGET_NAME_BYTE_3              (0x37U)    /* 7 */
-#define TPMS_TARGET_NAME_BYTE_4              (0x35U)    /* 5 */
-#define TPMS_TARGET_NAME_BYTE_5              (0x36U)    /* 6 */
+#define TPMS_TARGET_NAME_BYTE_0              (0x73U)    /* s */
+#define TPMS_TARGET_NAME_BYTE_1              (0x6EU)    /* n */
+#define TPMS_TARGET_NAME_BYTE_2              (0x54U)    /* T */
+#define TPMS_TARGET_NAME_BYTE_3              (0x50U)    /* P */
+#define TPMS_TARGET_NAME_BYTE_4              (0x4DU)    /* M */
+#define TPMS_TARGET_NAME_BYTE_5              (0x53U)    /* S */
 
 
 /*
@@ -67,11 +67,11 @@ extern "C" {
  * 当前工程实现：
  *
  * 1. 地址白名单是主过滤条件。
- * 2. SNP756 名称是验证条件。
+ * 2. snTPMS 名称是必需验证条件。
  *
  * 原因：
  * TPMS 广播包不一定每一包都带 Local Name。
- * 名称 SNP756 可能出现在 Scan Response 中。
+ * 名称 snTPMS 可能出现在 Scan Response 中。
  * 如果强制要求同一包同时满足“名称 + 地址”，容易漏掉其他传感器。
  *
  * 地址按 nRF Connect 显示顺序填写。
@@ -92,47 +92,47 @@ extern "C" {
 
 /*
  * index 0：LF 左前
- * MAC: D0:39:3F:19:83:06
+ * MAC: D0:39:3F:18:90:44
  */
 #define TPMS_SENSOR_LF_ADDR_0                (0xD0U)
 #define TPMS_SENSOR_LF_ADDR_1                (0x39U)
 #define TPMS_SENSOR_LF_ADDR_2                (0x3FU)
-#define TPMS_SENSOR_LF_ADDR_3                (0x19U)
-#define TPMS_SENSOR_LF_ADDR_4                (0x83U)
-#define TPMS_SENSOR_LF_ADDR_5                (0x06U)
+#define TPMS_SENSOR_LF_ADDR_3                (0x18U)
+#define TPMS_SENSOR_LF_ADDR_4                (0x90U)
+#define TPMS_SENSOR_LF_ADDR_5                (0x44U)
 
 /*
  * index 1：RF 右前
- * MAC: D0:39:3F:18:68:D3
+ * MAC: D0:39:3F:19:92:64
  */
 #define TPMS_SENSOR_RF_ADDR_0                (0xD0U)
 #define TPMS_SENSOR_RF_ADDR_1                (0x39U)
 #define TPMS_SENSOR_RF_ADDR_2                (0x3FU)
-#define TPMS_SENSOR_RF_ADDR_3                (0x18U)
-#define TPMS_SENSOR_RF_ADDR_4                (0x68U)
-#define TPMS_SENSOR_RF_ADDR_5                (0xD3U)
+#define TPMS_SENSOR_RF_ADDR_3                (0x19U)
+#define TPMS_SENSOR_RF_ADDR_4                (0x92U)
+#define TPMS_SENSOR_RF_ADDR_5                (0x64U)
 
 /*
  * index 2：RR 右后
- * MAC: D0:39:3F:19:27:31
+ * MAC: D0:39:3F:19:97:96
  */
 #define TPMS_SENSOR_RR_ADDR_0                (0xD0U)
 #define TPMS_SENSOR_RR_ADDR_1                (0x39U)
 #define TPMS_SENSOR_RR_ADDR_2                (0x3FU)
 #define TPMS_SENSOR_RR_ADDR_3                (0x19U)
-#define TPMS_SENSOR_RR_ADDR_4                (0x27U)
-#define TPMS_SENSOR_RR_ADDR_5                (0x31U)
+#define TPMS_SENSOR_RR_ADDR_4                (0x97U)
+#define TPMS_SENSOR_RR_ADDR_5                (0x96U)
 
 /*
  * index 3：LR 左后
- * MAC: D0:39:3F:17:BA:01
+ * MAC: D0:39:3F:1B:CC:45
  */
 #define TPMS_SENSOR_LR_ADDR_0                (0xD0U)
 #define TPMS_SENSOR_LR_ADDR_1                (0x39U)
 #define TPMS_SENSOR_LR_ADDR_2                (0x3FU)
-#define TPMS_SENSOR_LR_ADDR_3                (0x17U)
-#define TPMS_SENSOR_LR_ADDR_4                (0xBAU)
-#define TPMS_SENSOR_LR_ADDR_5                (0x01U)
+#define TPMS_SENSOR_LR_ADDR_3                (0x1BU)
+#define TPMS_SENSOR_LR_ADDR_4                (0xCCU)
+#define TPMS_SENSOR_LR_ADDR_5                (0x45U)
 
 
 #ifdef __cplusplus

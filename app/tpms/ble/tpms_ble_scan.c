@@ -5,14 +5,13 @@
  *
  * 当前版本：
  *
- * 1. 地址白名单作为主过滤条件。
- * 2. SNP756 名称作为验证条件。
- * 3. 同时兼容完整 MAC 正序 / 反序。
- * 4. 同时兼容 MAC 后三字节正序 / 反序。
+ * 1. snTPMS 名称和四个完整 MAC 地址共同作为过滤条件。
+ * 2. 同时兼容完整 MAC 正序 / 反序。
+ * 3. 名称可以来自同一 MAC 的 Scan Response。
  *
  * 原因：
  *
- * TPMS 的名称 SNP756 不一定每一包广播都带。
+ * TPMS 的名称 snTPMS 不一定每一包广播都带。
  * 有时名称在 Scan Response 中，而 Manufacturer Data 在 Advertising Data 中。
  * CC2745 不一定像手机 nRF Connect 一样自动合并显示。
  */
@@ -390,20 +389,6 @@ static bool TpmsBleScan_addrEqualsReverse(const uint8_t *addr,
  * 后三字节：
  * 19:83:06
  */
-static bool TpmsBleScan_addrSuffixEqualsNormal(const uint8_t *addr,
-                                               const uint8_t ref_addr[6])
-{
-    if ((addr == NULL) || (ref_addr == NULL))
-    {
-        return false;
-    }
-
-    return ((addr[3] == ref_addr[3]) &&
-            (addr[4] == ref_addr[4]) &&
-            (addr[5] == ref_addr[5]));
-}
-
-
 /*
  * 后三字节反序匹配。
  *
@@ -416,20 +401,6 @@ static bool TpmsBleScan_addrSuffixEqualsNormal(const uint8_t *addr,
  * nRF 后三字节 19:83:06
  * 对应 TI addr[2], addr[1], addr[0]
  */
-static bool TpmsBleScan_addrSuffixEqualsReverse(const uint8_t *addr,
-                                                const uint8_t ref_addr[6])
-{
-    if ((addr == NULL) || (ref_addr == NULL))
-    {
-        return false;
-    }
-
-    return ((addr[2] == ref_addr[3]) &&
-            (addr[1] == ref_addr[4]) &&
-            (addr[0] == ref_addr[5]));
-}
-
-
 static bool TpmsBleScan_addrIsZero(const uint8_t ref_addr[6])
 {
     if (ref_addr == NULL)
@@ -546,34 +517,14 @@ static bool TpmsBleScan_addrInWhitelist(const uint8_t *addr,
          * 这一步是为了避免前 3 字节、地址类型、
          * 地址顺序处理导致漏匹配。
          */
-        if (TpmsBleScan_addrSuffixEqualsNormal(addr, white_addr[i]) == true)
-        {
-            if (matched_index != NULL)
-            {
-                *matched_index = i;
-            }
-
-            g_tpms_scan_last_addr_match_mode =
-                TPMS_SCAN_ADDR_MATCH_SUFFIX_NORMAL;
-
-            return true;
-        }
+        /*
+         * Do not accept a three-byte suffix match. Learning must use one
+         * of the four complete MAC addresses from the sensor list.
+         */
 
         /*
          * 第四优先级：后三字节反序匹配。
          */
-        if (TpmsBleScan_addrSuffixEqualsReverse(addr, white_addr[i]) == true)
-        {
-            if (matched_index != NULL)
-            {
-                *matched_index = i;
-            }
-
-            g_tpms_scan_last_addr_match_mode =
-                TPMS_SCAN_ADDR_MATCH_SUFFIX_REVERSE;
-
-            return true;
-        }
     }
 
 #else
@@ -834,7 +785,7 @@ static bool TpmsBleScan_isTpmsSensorAdv(const uint8_t *addr,
     if (addr_match == false)
     {
         /*
-         * 如果名称是 SNP756，但地址没有命中白名单，
+         * 如果名称是 snTPMS，但地址没有命中白名单，
          * 保存这个地址，方便判断是不是 MAC 配错或顺序不对。
          */
         if (name_match == true)
@@ -867,6 +818,25 @@ static bool TpmsBleScan_isTpmsSensorAdv(const uint8_t *addr,
         memcpy((void *)g_tpms_scan_white_last_addr[matched_index],
                addr,
                6U);
+
+        /*
+         * Local Name can be carried by a separate Scan Response. Remember
+         * that this exact whitelist MAC has already advertised "snTPMS".
+         */
+        if (name_match == true)
+        {
+            g_tpms_scan_white_name_verified[matched_index] = 1U;
+        }
+    }
+
+    /*
+     * The learning filter requires both the complete MAC and snTPMS.
+     * A previous Scan Response from the same whitelist MAC is sufficient.
+     */
+    if ((matched_index >= 4U) ||
+        (g_tpms_scan_white_name_verified[matched_index] == 0U))
+    {
+        return false;
     }
 
     if (name_match == true)
@@ -887,7 +857,7 @@ static bool TpmsBleScan_isTpmsSensorAdv(const uint8_t *addr,
         g_tpms_scan_last_name_verified = 0U;
 
         /*
-         * 当前包没有 SNP756 名称，但地址已经命中白名单。
+         * 当前包没有 snTPMS 名称，但同一 MAC 已在之前完成名称验证。
          * 仍然认为是目标 TPMS。
          */
         s_tpms_scan_current_match_reason =
@@ -978,7 +948,7 @@ bool TpmsBleScan_handleAdvReport(const uint8_t *addr,
     /*
      * TPMS 过滤：
      *
-     * 地址白名单为主，SNP756 名称为验证。
+     * 完整地址白名单与 snTPMS 名称双重过滤。
      */
     is_tpms = TpmsBleScan_isTpmsSensorAdv(addr, data, data_len);
 
@@ -1034,7 +1004,7 @@ bool TpmsBleScan_handleAdvReport(const uint8_t *addr,
                 addr,
                 addr_type,
                 rssi,
-                g_tpms_scan_last_mfr_data,
+                (const uint8_t *)g_tpms_scan_last_mfr_data,
                 g_tpms_scan_last_mfr_len);
         return true;
     }
